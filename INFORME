@@ -1,0 +1,34 @@
+# Informe Técnico - API RESTful para Analítica de Videovigilancia Inteligente
+**Asignatura:** CI-3391 - Taller de Bases de Datos I  
+**Trimestre:** Abril - Julio 2026  
+**Universidad Simón Bolívar**
+
+---
+
+## 1. Introducción y Arquitectura Backend
+
+El proyecto implementa una API RESTful desarrollada con **FastAPI** y **Python 3.10+**, conectada directamente a una base de datos **PostgreSQL** mediante el driver oficial **`psycopg` (v3)**. Siguiendo los requerimientos del curso, la interacción con la base de datos se realiza mediante **SQL puro (sin ORM)** para maximizar el control sobre las consultas y optimizar el rendimiento.
+
+---
+
+## 2. Explicación de Endpoints y Lógica Interna
+
+### Entregable 4A - Módulo CRUD
+* **Ubicaciones (`/ubicaciones`)**: Realiza operaciones completas (`GET`, `POST`, `PUT`, `DELETE`) sobre la tabla `Building`. Mantiene la integridad referencial gestionando excepciones de claves primarias duplicadas (`psycopg.IntegrityError`).
+* **Cámaras (`/camaras`)**: Permite listar, consultar por ID, registrar y actualizar dispositivos en la tabla `Camera`. Asocia cada cámara con su ubicación física (`building_id`).
+* **Eventos (`/eventos`)**: Permite registrar y consultar eventos de detección (`Event`). Implementa límites de consulta (`LIMIT 100`) para proteger el rendimiento del servidor.
+
+### Entregable 4B - Módulo Analítico
+* **`GET /analytics/cameras/{id}/traffic`**: Invoca la función PL/pgSQL `get_camera_traffic(id, from, to)` de la Fase 3, retornando la métrica de flujo y conteo de detecciones en el rango de fechas indicado.
+* **`GET /analytics/zones/{tipo}`**: Invoca la función PL/pgSQL `get_zone_summary(tipo)` para consolidar métricas agrupadas por zona geográfica.
+* **`GET /analytics/alerts/summary`**: Ejecuta una consulta SQL en tiempo real con `JOIN` entre `Alert`, `Event` y `Camera`, agrupando por cámara y nivel de severidad para auditar incidentes de seguridad.
+
+### Entregable 4C - Módulo Vectorial (`pgvector`)
+* **`GET /objects/{id}/similar`**: Consulta la base de datos llamando a la función almacenada `find_similar_objects()` para hallar elementos visualmente cercanos a partir de un ID de objeto existente.
+* **`POST /search/similar`**: Recibe un arreglo continuo de 512 floats en el cuerpo del mensaje (JSON). Transforma la lista Python al formato nativo de vector de PostgreSQL (`[x1, x2, ...]`) y ejecuta la comparación utilizando el operador de distancia coseno (`<=>`):
+  ```sql
+  SELECT o.id, (o.vector_data <=> %s::vector) AS distancia_coseno
+  FROM "object" o
+  WHERE o.vector_data IS NOT NULL
+  ORDER BY distancia_coseno ASC
+  LIMIT %s;
